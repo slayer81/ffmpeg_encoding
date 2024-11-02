@@ -1,0 +1,1 @@
+This is a collection of my custom scripts written to encode (usually) video files using ffmpeg. In most cases, my use case is in batch and executed as a Finder Quick Action, complete with encoding results and storage space savings pushed as via a macOS Notification. Whenever possible, I will include the associated .workflow file.
