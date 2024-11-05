@@ -20,13 +20,13 @@ TRASH_DIR = '/Users/scott/.Trash/'
 ARCHIVE_FAIL_OVER_DIR = '/Users/scott/_Encoder_Archive'
 
 # Notification Parameters
-MSG_TITLE = 'Encode as 720p HEVC'
+MSG_TITLE = 'Re-encode as HEVC'
 
 # Logging Parameters
 TODAY_DATESTAMP = dt.date.today().strftime("%Y-%m-%d")
 LOG_SPACER = '   '
 SPACER = ' '
-LOG_DIR = '/Users/scott/Logs/ffmpeg/Encode_as_720p_HEVC'
+LOG_DIR = '/Users/scott/Logs/ffmpeg/Re-encode_as_HEVC'
 LOG_NAME = f'{TODAY_DATESTAMP}.log'
 LOGFILE_FULL_PATH = os.path.join(LOG_DIR, LOG_NAME)
 
@@ -101,10 +101,10 @@ def create_notification_content(total_count, failed_list, body_str):
     msg_body = ''
 
     if len(failed_list) > 0:
-        msg_subtitle = f'FAILED to encode {len(failed_list)} of {total_count} files'
+        msg_subtitle = f'FAILED to re-encode {len(failed_list)} of {total_count} files'
         msg_body += f'Filenames in log: "{LOG_NAME}"\n'
     else:
-        msg_subtitle = f'All {total_count} files were encoded successfully'
+        msg_subtitle = f'All {total_count} files were re-encoded successfully'
 
     msg_body += f'{body_str}'
     message_content_list.extend([msg_subtitle, body_str])
@@ -158,7 +158,7 @@ def encode(target_file):
     # else:
     #     video_codec = 'libx265 -crf 25'
     video_codec = 'libx265 -crf 25'
-    ff_switches = f'-vf "scale=-1:720" -c:v {video_codec} -preset medium -c:a copy -map_metadata -1 -metadata title="{metadata_title}"'
+    ff_switches = f'-c:v {video_codec} -preset medium -c:a copy -map_metadata -1 -metadata title="{metadata_title}"'
     convert_cmd = f'{ff_bin} "{target_file}" {ff_switches} "{temp_file}"'
 
     # Assemble object movement commands
@@ -167,14 +167,14 @@ def encode(target_file):
     arc_src_file_cmd = f'mv "{target_file}" "{encoder_archive}"'
 
     # Convert File
-    logger('info', f'{SPACER * 3} Begin encoding of target file....')
+    logger('info', f'{SPACER * 3} Begin re-encoding of target file....')
     try:
         subprocess.run(convert_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     except Exception as e:
         # Downgrade process failed. Log event
         logger('failure', f'{SPACER * 3}')
-        logger('failure', f'{SPACER * 6} *** Encoding failed *** Response: "{str(e)}". Cleaning up.....')
+        logger('failure', f'{SPACER * 6} *** Re-encoding failed *** Response: "{str(e)}". Cleaning up.....')
         logger('failure', f'{SPACER * 3}')
 
         # Delete temp file
@@ -186,8 +186,8 @@ def encode(target_file):
     after_size_raw = os.path.getsize(temp_file_full_path)
     after_size = hm.naturalsize(after_size_raw)
 
-    logger('success', f'{SPACER * 3} Successfully encoded "{temp_file_name}"!')
-    logger('info', f'{SPACER * 3} Encoded file size:\t {after_size}\t Reduction:\t ({percentage_decrease(after_size_raw, before_size_raw)}%)')
+    logger('success', f'{SPACER * 3} Successfully re-encoded "{temp_file_name}"!')
+    logger('info', f'{SPACER * 3} Re-encoded file size:\t {after_size}\t Reduction:\t ({percentage_decrease(after_size_raw, before_size_raw)}%)')
 
     # Move target_file to encoder_archive
     logger('info', f'{SPACER * 3} Moving source file to encoder archive')
@@ -195,9 +195,9 @@ def encode(target_file):
 
     # Overwrite target_file with temp_file
     # Rename encoded file as original
-    logger('info', f'{SPACER * 3} Renaming encoded file as source file name')
+    logger('info', f'{SPACER * 3} Renaming re-encoded file as source file name')
     file_event('rename', repl_src_file_cmd)
-    logger('info', f'{SPACER * 3} File encoding process completed')
+    logger('info', f'{SPACER * 3} File re-encoding process completed')
 
     execution_time = hm.precisedelta(dt.datetime.now() - ts_now)
     logger('info', '{:<62} {:>16}'.format('File processing time:', execution_time))
@@ -208,7 +208,7 @@ def encode(target_file):
 ####################################################################################
 def main():
     logger('none', f'\n\n{MARKER_CHAR * 140}\n')
-    logger('info', f'Starting encoder script:\t {__file__}')
+    logger('info', f'Starting re-encoder script:\t {__file__}')
     if platform.node().startswith('_Scotts-M1-MBP'):
         logger('info', 'Executing machine supports hardware encoding. Using HEVC_VideoToolBox ')
     logger('info', 'Checking for targets.... ')
@@ -216,16 +216,16 @@ def main():
     if len(sys.argv) > 1:
         if isinstance(sys.argv[1], int):
             targets_list = sys.argv[2:]
-            logger('info', f"Found {(len(targets_list))} targets to encode. Let's begin!")
+            logger('info', f"Found {(len(targets_list))} targets to re-encode. Let's begin!")
         else:
             targets_list = sys.argv[1:]
-            logger('info', f"Found {(len(targets_list))} targets to encode. Let's begin!")
+            logger('info', f"Found {(len(targets_list))} targets to re-encode. Let's begin!")
     else:
         logger('failure', f' *** Nothing found to encode ***. Exiting.....')
         logger('info', f'{MARKER_CHAR * 100}')
 
         execution_time = hm.precisedelta(dt.datetime.now() - START_TIME)
-        message_content = f' Automator Task Completed | {MSG_TITLE} | Nothing found to encode\nTotal runtime: {human_but_smaller(execution_time)} '
+        message_content = f' Automator Task Completed | {MSG_TITLE} | Nothing found to re-encode\nTotal runtime: {human_but_smaller(execution_time)} '
         logger('info', f'Display Notification data:\t"{message_content[20:]}"...')
         logger('info', '{:<62} {:>16}'.format(f'Execution completed. Total runtime:', human_but_smaller(execution_time)))
         logger('none', f'{MARKER_CHAR * 140}\n')
@@ -254,7 +254,7 @@ def main():
 
     execution_time = hm.precisedelta(dt.datetime.now() - START_TIME)
     saved_size = hm.naturalsize(before_size_raw - after_size_raw)
-    body_str = 'Disk space recovered:  {}   ({}%)\nAvg. encode time: {}\nTime: {}'.format(
+    body_str = 'Disk space recovered:  {}   ({}%)\nAvg. re-encode time: {}\nTime: {}'.format(
         saved_size, percentage_decrease(after_size_raw, before_size_raw),
         human_but_smaller(hm.precisedelta((dt.datetime.now() - START_TIME) / len(targets_list))),
         human_but_smaller(execution_time)
@@ -271,7 +271,7 @@ def main():
     logger('info', '{:>35} {:>16}'.format(' Total file size (targets passed): ', hm.naturalsize(before_size_raw)))
     logger('info', '{:>35} {:>16}'.format(' Total file size (after encoding): ', hm.naturalsize(after_size_raw)))
     logger('info', '{:>36} {:6} {:<16}'.format(
-    	' Average file encoding time: ',
+    	' Average file re-encoding time: ',
     	'',
     	human_but_smaller(hm.precisedelta((dt.datetime.now() - START_TIME) / len(targets_list)))
     ))

@@ -1,5 +1,6 @@
 #!/usr/local/bin/python3.11
 import os
+import platform
 import sys
 import pathlib
 import subprocess
@@ -19,13 +20,13 @@ TRASH_DIR = '/Users/scott/.Trash/'
 ARCHIVE_FAIL_OVER_DIR = '/Users/scott/_Encoder_Archive'
 
 # Notification Parameters
-MSG_TITLE = 'Encode as 720p HEVC'
+MSG_TITLE = 'Encode as 1080p HEVC'
 
 # Logging Parameters
 TODAY_DATESTAMP = dt.date.today().strftime("%Y-%m-%d")
 LOG_SPACER = '   '
 SPACER = ' '
-LOG_DIR = '/Users/scott/Logs/ffmpeg/Encode_as_720p_HEVC'
+LOG_DIR = '/Users/scott/Logs/ffmpeg/Encode_as_1080p_HEVC'
 LOG_NAME = f'{TODAY_DATESTAMP}.log'
 LOGFILE_FULL_PATH = os.path.join(LOG_DIR, LOG_NAME)
 
@@ -81,23 +82,37 @@ def file_event(action, command):
 
 
 ####################################################################################
-def create_notification_content(total_count, failed_list, e_time, pc_saved):
+def human_but_smaller(data: str):
+    swap_dict = {
+    	' and': '',
+        ' hour': ' hr',
+        ' minute': ' min',
+        ' seconds': ' sec'
+    }
+    for key, value in swap_dict.items():
+        data = data.replace(key, value)
+    return data
+####################################################################################
+
+
+####################################################################################
+def create_notification_content(total_count, failed_list, body_str):
     message_content_list = [MSG_TITLE]
     msg_body = ''
 
     if len(failed_list) > 0:
         msg_subtitle = f'FAILED to encode {len(failed_list)} of {total_count} files'
-        msg_body += f'Check the log file for a list of specific files\n{LOGFILE_FULL_PATH}'
+        msg_body += f'Filenames in log: "{LOG_NAME}"\n'
     else:
         msg_subtitle = f'All {total_count} files were encoded successfully'
 
-    msg_body += f'Disk space recovered: {pc_saved}\nTotal runtime: {e_time}'
-    message_content_list.extend([msg_subtitle, msg_body])
+    msg_body += f'{body_str}'
+    message_content_list.extend([msg_subtitle, body_str])
 
     if len(message_content_list) == 3:
         message_content = '|'.join(message_content_list)
     else:
-        message_content = f' Automator Task Completed With Errors | Check Log File For More Detail | {LOGFILE_FULL_PATH} '
+        message_content = f' Automator Task Completed With Errors | Check Log File For More Detail | {LOG_NAME} '
     return message_content
 ####################################################################################
 
@@ -114,9 +129,8 @@ def encode(target_file):
     temp_file_name = f'{output_file_stem}.TEMP{output_file_ext}'
     temp_file_full_path = os.path.join(p.parent, temp_file_name)
     before_size_raw = os.path.getsize(target_file)
-    before_size = hm.naturalsize(before_size_raw)
 
-    # Use pathlib to extract the volume name parts, else use TRASH_DIR
+    # Use pathlib to extract the volume name parts, else use ARCHIVE_FAIL_OVER_DIR
     # Assemble the volume name with safety checks
     if len(p.parts) >= 3:
         volume = str(p.parts[0] + p.parts[1] + '/' + p.parts[2])
@@ -126,26 +140,30 @@ def encode(target_file):
 
     # Create "encoder_archive" if it doesn't exist
     os.makedirs(encoder_archive, exist_ok=True)
-    
-    # archive_file_full_path = os.path.join(encoder_archive, p.name)
 
     logger('info', f'{SPACER * 3} File:  "{target_file}"')
-    logger('info', f'{SPACER * 3} Source file path:\t {output_dir}')
-    logger('info', f'{SPACER * 3} Source file name:\t {p.name}')
-    logger('info', f'{SPACER * 3} Source file size:\t {before_size}')
+    logger('info', f'{SPACER * 3} Target file path:\t {output_dir}')
+    logger('info', f'{SPACER * 3} Target file name:\t {p.name}')
+    logger('info', f'{SPACER * 3} Target file size:\t {hm.naturalsize(before_size_raw)}')
 
     # Create filename for our working copy, before downgrading.
     temp_file = os.path.join(output_dir, temp_file_name)
 
     # ffmpeg Parameters
     ff_bin = '/usr/local/bin/ffmpeg -hide_banner -i'
-    # ff_switches = f'-vf "scale=-1:720" -c:v libx265 -crf 25 -preset medium -c:a copy -map_metadata 0 -metadata title="{metadata_title}"'
-    ff_switches = f'-vf "scale=-1:720" -c:v libx265 -crf 25 -preset medium -c:a copy -map_metadata -1 -metadata title="{metadata_title}"'
 
+    # After multiple tests, I wasn't happy with the hevc_videotoolbox results, so skipping for now
+    # if platform.node().startswith('Scotts-M1-MBP'):
+    #     video_codec = 'hevc_videotoolbox -crf 20'
+    # else:
+    #     video_codec = 'libx265 -crf 25'
+    video_codec = 'libx265 -crf 25'
+    ff_switches = f'-vf "scale=-1:1080" -c:v {video_codec} -preset medium -c:a copy -map_metadata -1 -metadata title="{metadata_title}"'
     convert_cmd = f'{ff_bin} "{target_file}" {ff_switches} "{temp_file}"'
+
+    # Assemble object movement commands
     repl_src_file_cmd = f'mv -f "{temp_file}" "{target_file}"'
     del_tmp_file_cmd = f'mv "{temp_file}" "{TRASH_DIR}"'
-    del_src_file_cmd = f'rm -f "{target_file}"'
     arc_src_file_cmd = f'mv "{target_file}" "{encoder_archive}"'
 
     # Convert File
@@ -168,13 +186,11 @@ def encode(target_file):
     after_size_raw = os.path.getsize(temp_file_full_path)
     after_size = hm.naturalsize(after_size_raw)
 
-    # logger('success', f'{SPACER * 3} Successfully encoded "{target_file}"!')
     logger('success', f'{SPACER * 3} Successfully encoded "{temp_file_name}"!')
     logger('info', f'{SPACER * 3} Encoded file size:\t {after_size}\t Reduction:\t ({percentage_decrease(after_size_raw, before_size_raw)}%)')
 
     # Move target_file to encoder_archive
     logger('info', f'{SPACER * 3} Moving source file to encoder archive')
-    # file_event('rename', arc_src_file_cmd)
     file_event('move', arc_src_file_cmd)
 
     # Overwrite target_file with temp_file
@@ -193,6 +209,8 @@ def encode(target_file):
 def main():
     logger('none', f'\n\n{MARKER_CHAR * 140}\n')
     logger('info', f'Starting encoder script:\t {__file__}')
+    if platform.node().startswith('_Scotts-M1-MBP'):
+        logger('info', 'Executing machine supports hardware encoding. Using HEVC_VideoToolBox ')
     logger('info', 'Checking for targets.... ')
     logger('none', f'{MARKER_CHAR * 140}\n')
     if len(sys.argv) > 1:
@@ -207,9 +225,9 @@ def main():
         logger('info', f'{MARKER_CHAR * 100}')
 
         execution_time = hm.precisedelta(dt.datetime.now() - START_TIME)
-        message_content = f' Automator Task Completed | {MSG_TITLE} | Nothing found to encode\nTotal runtime: {execution_time} '
+        message_content = f' Automator Task Completed | {MSG_TITLE} | Nothing found to encode\nTotal runtime: {human_but_smaller(execution_time)} '
         logger('info', f'Display Notification data:\t"{message_content[20:]}"...')
-        logger('info', '{:<62} {:>16}'.format(f'Execution completed. Total runtime:', execution_time))
+        logger('info', '{:<62} {:>16}'.format(f'Execution completed. Total runtime:', human_but_smaller(execution_time)))
         logger('none', f'{MARKER_CHAR * 140}\n')
         print(message_content)
 
@@ -232,29 +250,34 @@ def main():
         before_size_raw += old_size
         after_size_raw += new_size
         loop_counter += 1
-
-    before_size = hm.naturalsize(before_size_raw)
-    after_size = hm.naturalsize(after_size_raw)
-    percent_size_reduced = percentage_decrease(after_size_raw, before_size_raw)
     logger('info', f'{MARKER_CHAR * 100}')
 
-
-    logger('info', '{:>35} {:>16}'.format('Total file size (targets passed): ', before_size))
-    logger('info', '{:>35} {:>16}'.format('Total file size (after encoding): ', after_size))
-    logger('info', '{:>35} {:>16}'.format('Total reduction in disk space: ', percent_size_reduced))
-
-    
     execution_time = hm.precisedelta(dt.datetime.now() - START_TIME)
-    message_content = create_notification_content(len(targets_list), failed_list, execution_time, f'{str(percent_size_reduced)}%')
-    # logger('success', f'Display Notification data:\t"{message_content[20:]}"...')
-    logger('info', '{:<62} {:>16}'.format(f'Execution completed. Total runtime:', execution_time))
-    logger('none', f'{MARKER_CHAR * 140}\n')
+    saved_size = hm.naturalsize(before_size_raw - after_size_raw)
+    body_str = 'Disk space recovered:  {}   ({}%)\nAvg. encode time: {}\nTime: {}'.format(
+        saved_size, percentage_decrease(after_size_raw, before_size_raw),
+        human_but_smaller(hm.precisedelta((dt.datetime.now() - START_TIME) / len(targets_list))),
+        human_but_smaller(execution_time)
+    )
 
     # Print notification content to stdout
+    message_content = create_notification_content(len(targets_list), failed_list, body_str)
     print(message_content)
 
     # Make sure to flush stdout to ensure immediate output
     sys.stdout.flush()
+
+    # Write cumulative results to logfile
+    logger('info', '{:>35} {:>16}'.format(' Total file size (targets passed): ', hm.naturalsize(before_size_raw)))
+    logger('info', '{:>35} {:>16}'.format(' Total file size (after encoding): ', hm.naturalsize(after_size_raw)))
+    logger('info', '{:>36} {:6} {:<16}'.format(
+    	' Average file encoding time: ',
+    	'',
+    	human_but_smaller(hm.precisedelta((dt.datetime.now() - START_TIME) / len(targets_list)))
+    ))
+    logger('info', '{:>35} {:>16}'.format(' Total disk space recovered: ', saved_size))
+    logger('info', '{:<62} {:>16}'.format(f'Execution completed. Total runtime: ', human_but_smaller(execution_time)))
+    logger('none', f'{MARKER_CHAR * 140}\n')
 ####################################################################################
 
 
